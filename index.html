@@ -527,8 +527,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  const WEBHOOK_URL_HARDCODED = "https://discord.com/api/webhooks/1513464645439066164/di6P5317T82cqkBl-WtT302yvdRB8lRRahDK8n9PSTEarvG2pwOIbvR_-ADZUYuDondh";
-    const GSHEET_URL_HARD    = "https://script.google.com/macros/s/AKfycbyOELB8yBFOaiXtctI-TWHthGREeUhR24PiTt38NqUDJ8waFaZpwFWMZgcKr8XhDVCPrg/exec";
+  const DISCORD_URL_HARD  = "https://discord.com/api/webhooks/1513464645439066164/di6P5317T82cqkBl-WtT302yvdRB8lRRahDK8n9PSTEarvG2pwOIbvR_-ADZUYuDondh";
+  const GSHEET_URL_HARD    = "https://script.google.com/macros/s/AKfycbyOELB8yBFOaiXtctI-TWHthGREeUhR24PiTt38NqUDJ8waFaZpwFWMZgcKr8XhDVCPrg/exec";
 
   let cfg = {
     discord:     DISCORD_URL_HARD  || localStorage.getItem("discord_webhook") || "",
@@ -597,7 +597,6 @@
       discord:   v("discord")          || "Not provided",
       lang:      v("lang"),
       power,
-      hq,
       vip:       v("vip")              || "—",
       alliance:  v("current_alliance") || "None",
       timezone:  v("timezone"),
@@ -668,36 +667,6 @@
       body: JSON.stringify(d)
     });
     // no-cors = opaque response, assume ok
-  }
-
-  // ── Airtable ──
-  async function sendAirtable(d) {
-    const res = await fetch(cfg.airtable, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + cfg.airtableKey,
-      },
-      body: JSON.stringify({
-        fields: {
-          "In-game Name":     d.pseudo,
-          "Server":           d.server,
-          "Discord":          d.discord,
-          "Language":         d.lang,
-          "Power":            d.power,
-          "VIP Level":        d.vip,
-          "Current Alliance": d.alliance,
-          "Time Zone":        d.timezone,
-          "Daily Activity":   d.activity,
-          "Alliance Events":  d.events,
-          "Motivation":       d.motivation,
-          "Extra":            d.extra,
-          "Submitted":        d.submitted,
-          "Status":           "Pending",
-        }
-      })
-    });
-    if (!res.ok) throw new Error("Airtable " + res.status);
   }
 
   function v(id) { return document.getElementById(id)?.value?.trim() || ""; }
