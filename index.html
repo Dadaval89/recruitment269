@@ -528,28 +528,29 @@
 
 <script>
   const WEBHOOK_URL_HARDCODED = "https://discord.com/api/webhooks/1513464645439066164/di6P5317T82cqkBl-WtT302yvdRB8lRRahDK8n9PSTEarvG2pwOIbvR_-ADZUYuDondh";
+    const GSHEET_URL_HARD    = "https://script.google.com/macros/s/AKfycbyOELB8yBFOaiXtctI-TWHthGREeUhR24PiTt38NqUDJ8waFaZpwFWMZgcKr8XhDVCPrg/exec";
 
-  let webhookUrl = WEBHOOK_URL_HARDCODED || localStorage.getItem("discord_webhook") || "";
+  let cfg = {
+    discord:     DISCORD_URL_HARD  || localStorage.getItem("discord_webhook") || "",
+    gsheet:      GSHEET_URL_HARD   || localStorage.getItem("gsheet_url")      || "",
+  };
 
-  function saveWebhook() {
-    const val = document.getElementById("webhook-input").value.trim();
-    if (!val.startsWith("https://discord.com/api/webhooks/")) {
-      showToast("Invalid URL — must start with https://discord.com/api/webhooks/", true);
-      return;
-    }
-    webhookUrl = val;
-    localStorage.setItem("discord_webhook", val);
+  function saveConfig() {
+    const d  = document.getElementById("webhook-input").value.trim();
+    const g  = document.getElementById("gsheet-input").value.trim();
+    if (d)  { cfg.discord     = d;  localStorage.setItem("discord_webhook", d); }
+    if (g)  { cfg.gsheet      = g;  localStorage.setItem("gsheet_url", g); }
     updateNotice();
-    showToast("✅ Webhook saved!");
+    showToast("✅ Config saved!");
   }
 
   function updateNotice() {
-    const saved = WEBHOOK_URL_HARDCODED || localStorage.getItem("discord_webhook");
-    if (saved) {
+    const hasDiscord = cfg.discord || DISCORD_URL_HARD;
+    if (hasDiscord) {
       document.getElementById("webhook-notice").classList.add("hidden");
-      document.getElementById("webhook-input").value = saved;
-      webhookUrl = saved;
     }
+    if (cfg.discord) document.getElementById("webhook-input").value = cfg.discord;
+    if (cfg.gsheet)  document.getElementById("gsheet-input").value  = cfg.gsheet;
   }
 
   updateNotice();
@@ -575,8 +576,7 @@
 
   // ── Form submit ──
   async function submitForm() {
-    const url = webhookUrl;
-    if (!url) {
+    if (!cfg.discord) {
       showToast("Please configure the Discord webhook first!", true);
       return;
     }
@@ -591,49 +591,113 @@
     btn.disabled = true;
     btn.textContent = "Sending…";
 
-    const payload = {
-      username: "1UP #269 — Recruitment",
-      embeds: [{
-        title: `⚔️ New Application — ${pseudo}`,
-        color: 0x1A8FFF,
-        fields: [
-          { name: "👤 In-game Name",      value: pseudo,                          inline: true },
-          { name: "🌐 Server / State",    value: v("server") || "—",              inline: true },
-          { name: "💬 Discord",           value: v("discord") || "Not provided",  inline: true },
-          { name: "🗣 Language",          value: v("lang"),                       inline: true },
-          { name: "⚡ Power",             value: power,                           inline: true },
-          { name: "💎 VIP Level",        value: v("vip") || "—",                 inline: true },
-          { name: "🏰 Current Alliance", value: v("current_alliance") || "None", inline: true },
-          { name: "🕐 Time Zone",        value: v("timezone"),                   inline: true },
-          { name: "📅 Daily Activity",   value: v("activity"),                   inline: false },
-          { name: "🎯 Alliance Events",  value: events,                          inline: false },
-          { name: "💡 Motivation",       value: v("motivation") || "Not provided", inline: false },
-          ...(v("extra") ? [{ name: "📝 Additional Info", value: v("extra"), inline: false }] : []),
-        ],
-        footer: { text: "1UP #269 — Last War Survival · Recruitment Form" },
-        timestamp: new Date().toISOString()
-      }]
+    const data = {
+      pseudo,
+      server:    v("server")           || "—",
+      discord:   v("discord")          || "Not provided",
+      lang:      v("lang"),
+      power,
+      hq,
+      vip:       v("vip")              || "—",
+      alliance:  v("current_alliance") || "None",
+      timezone:  v("timezone"),
+      activity:  v("activity"),
+      events,
+      motivation: v("motivation")      || "Not provided",
+      extra:     v("extra")            || "",
+      submitted: new Date().toLocaleString(),
     };
 
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok || res.status === 204) {
-        showToast("✅ Application sent! We'll be in touch soon.");
-        clearForm();
-      } else {
-        throw new Error(`HTTP ${res.status}`);
-      }
-    } catch (err) {
-      showToast("Send error — please check the webhook URL.", true);
-      console.error(err);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "⚔ SUBMIT MY APPLICATION";
-    }
+    const results = await Promise.allSettled([
+      sendDiscord(data),
+      cfg.gsheet   ? sendGSheet(data)   : Promise.resolve("skipped"),
+    ]);
+
+    const ok = results[0].status === "fulfilled";
+    const gOk = results[1].value !== "skipped" ? results[1].status === "fulfilled" : null;
+
+    let msg = ok ? "✅ Application sent to Discord!" : "❌ Discord error.";
+    if (gOk === true)  msg += " + Google Sheets ✅";
+    if (gOk === false) msg += " + Google Sheets ❌";
+
+    showToast(msg, !ok);
+    if (ok) clearForm();
+
+    btn.disabled = false;
+    btn.textContent = "⚔ SUBMIT MY APPLICATION";
+  }
+
+  // ── Discord ──
+  async function sendDiscord(d) {
+    const res = await fetch(cfg.discord, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "1UP #269 — Recruitment",
+        embeds: [{
+          title: `⚔️ New Application — ${d.pseudo}`,
+          color: 0x1A8FFF,
+          fields: [
+            { name: "👤 In-game Name",      value: d.pseudo,     inline: true },
+            { name: "🌐 Server / State",    value: d.server,     inline: true },
+            { name: "💬 Discord",           value: d.discord,    inline: true },
+            { name: "🗣 Language",          value: d.lang,       inline: true },
+            { name: "⚡ Power",             value: d.power,      inline: true },
+            { name: "💎 VIP Level",        value: d.vip,         inline: true },
+            { name: "🏰 Current Alliance", value: d.alliance,   inline: true },
+            { name: "🕐 Time Zone",        value: d.timezone,   inline: true },
+            { name: "📅 Daily Activity",   value: d.activity,   inline: false },
+            { name: "🎯 Alliance Events",  value: d.events,     inline: false },
+            { name: "💡 Motivation",       value: d.motivation, inline: false },
+            ...(d.extra ? [{ name: "📝 Additional Info", value: d.extra, inline: false }] : []),
+          ],
+          footer: { text: "1UP #269 — Last War Survival · Recruitment Form" },
+          timestamp: new Date().toISOString()
+        }]
+      })
+    });
+    if (!res.ok && res.status !== 204) throw new Error("Discord " + res.status);
+  }
+
+  // ── Google Sheets (Apps Script Web App) ──
+  async function sendGSheet(d) {
+    const res = await fetch(cfg.gsheet, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(d)
+    });
+    // no-cors = opaque response, assume ok
+  }
+
+  // ── Airtable ──
+  async function sendAirtable(d) {
+    const res = await fetch(cfg.airtable, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + cfg.airtableKey,
+      },
+      body: JSON.stringify({
+        fields: {
+          "In-game Name":     d.pseudo,
+          "Server":           d.server,
+          "Discord":          d.discord,
+          "Language":         d.lang,
+          "Power":            d.power,
+          "VIP Level":        d.vip,
+          "Current Alliance": d.alliance,
+          "Time Zone":        d.timezone,
+          "Daily Activity":   d.activity,
+          "Alliance Events":  d.events,
+          "Motivation":       d.motivation,
+          "Extra":            d.extra,
+          "Submitted":        d.submitted,
+          "Status":           "Pending",
+        }
+      })
+    });
+    if (!res.ok) throw new Error("Airtable " + res.status);
   }
 
   function v(id) { return document.getElementById(id)?.value?.trim() || ""; }
